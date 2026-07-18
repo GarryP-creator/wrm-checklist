@@ -329,6 +329,8 @@
   /* ---------- Printable report ---------- */
   #hs-app-root .rp-title { font-size: 18px; font-weight: 700; color: var(--navy); margin-bottom: 2px; }
   #hs-app-root .rp-subtitle { font-size: 12.5px; color: var(--sub); margin-bottom: 16px; }
+  #hs-app-root .rp-section-title { font-size: 15px; font-weight: 700; color: var(--navy); margin: 10px 0 6px; }
+  #hs-app-root .rp-pagebreak { page-break-after: always; height: 0; }
   #hs-app-root .rp-empty { color: var(--sub); font-size: 13px; padding: 20px 0; }
   #hs-app-root .rp-block { margin-bottom: 28px; page-break-inside: avoid; }
   #hs-app-root table.rp-header, #hs-app-root table.rp-compliance {
@@ -1226,45 +1228,47 @@
       .filter(Boolean)
       .map(s => /[.!?]$/.test(s) ? s : s + '.');
   }
-  function buildActionsHtml(type, def) {
-    const ncItems = [];
-    const seen = new Set();
+  // Renders a single action card. Reused both for the consolidated Action Plan (Section 1)
+  // and (if ever needed again) inline per-topic, so the card markup only lives in one place.
+  function renderActionCard(type, item, answer) {
+    const refDisplay = type === 'hs' ? `HS/${item.ref}` : item.ref;
+    const priority = item.priority || '';
+    const priorityColor = PRIORITY_COLOR[priority] || '#8A93A1';
+    const priorityBg = PRIORITY_BG[priority] || '#F0F1F3';
+    const deadline = calcDeadline(priority);
+    const actionLines = splitToLines(item.recommendation);
+    const photosHtml = (answer.photos || []).map(p => `<img src="${p.dataUrl}" class="rp-action-photo">`).join('');
+    const field = (label, contentHtml) => `<div class="rp-action-field"><span class="rp-action-label">${label}</span><div class="rp-action-text">${contentHtml}</div></div>`;
+    return `
+      <div class="rp-action" style="border-color:${priorityColor};--priority-color:${priorityColor};--priority-bg:${priorityBg};">
+        <div class="rp-action-head">
+          <span class="rp-action-ref">${escapeHtml(refDisplay)}</span>
+          ${priority ? `<span class="rp-action-priority" style="background:${priorityColor}">Priority ${escapeHtml(priority)}</span>` : ''}
+          ${deadline ? `<span class="rp-action-deadline">Due ${escapeHtml(deadline)}</span>` : ''}
+        </div>
+        <div class="rp-action-name">${escapeHtml(item.name)}</div>
+        ${field('Observation', escapeHtml(item.finding || '\u2014'))}
+        ${field('Regulation', escapeHtml(item.reason || '\u2014'))}
+        ${field('Actions To Implement', actionLines.length ? actionLines.map(l => `<div>${escapeHtml(l)}</div>`).join('') : '\u2014')}
+        ${field('WRM Comments', answer.notes && answer.notes.trim() ? escapeHtml(answer.notes.trim()) : 'N/A')}
+        ${photosHtml ? field('Photo Evidence', `<div class="rp-action-photos">${photosHtml}</div>`) : ''}
+      </div>`;
+  }
+  // Collects every Not Compliant item within one topic/section's requirements (deduped, since a
+  // letter can bundle several items and only some may have actually failed).
+  function collectNcItems(def, seen) {
+    const found = [];
     def.requirements.forEach(req => {
       req.itemIds.forEach(id => {
         if (seen.has(id)) return;
         const a = currentVisit.answers[id];
         if (a && a.status === 'NC') {
           const item = findItemById(id);
-          if (item) { ncItems.push({ item, answer: a }); seen.add(id); }
+          if (item) { found.push({ item, answer: a }); seen.add(id); }
         }
       });
     });
-    if (!ncItems.length) return '';
-    const blocks = ncItems.map(({ item, answer }) => {
-      const refDisplay = type === 'hs' ? `HS/${item.ref}` : item.ref;
-      const priority = item.priority || '';
-      const priorityColor = PRIORITY_COLOR[priority] || '#8A93A1';
-      const priorityBg = PRIORITY_BG[priority] || '#F0F1F3';
-      const deadline = calcDeadline(priority);
-      const actionLines = splitToLines(item.recommendation);
-      const photosHtml = (answer.photos || []).map(p => `<img src="${p.dataUrl}" class="rp-action-photo">`).join('');
-      const field = (label, contentHtml) => `<div class="rp-action-field"><span class="rp-action-label">${label}</span><div class="rp-action-text">${contentHtml}</div></div>`;
-      return `
-        <div class="rp-action" style="border-color:${priorityColor};--priority-color:${priorityColor};--priority-bg:${priorityBg};">
-          <div class="rp-action-head">
-            <span class="rp-action-ref">${escapeHtml(refDisplay)}</span>
-            ${priority ? `<span class="rp-action-priority" style="background:${priorityColor}">Priority ${escapeHtml(priority)}</span>` : ''}
-            ${deadline ? `<span class="rp-action-deadline">Due ${escapeHtml(deadline)}</span>` : ''}
-          </div>
-          <div class="rp-action-name">${escapeHtml(item.name)}</div>
-          ${field('Observation', escapeHtml(item.finding || '\u2014'))}
-          ${field('Regulation', escapeHtml(item.reason || '\u2014'))}
-          ${field('Actions To Implement', actionLines.length ? actionLines.map(l => `<div>${escapeHtml(l)}</div>`).join('') : '\u2014')}
-          ${field('WRM Comments', answer.notes && answer.notes.trim() ? escapeHtml(answer.notes.trim()) : 'N/A')}
-          ${photosHtml ? field('Photo Evidence', `<div class="rp-action-photos">${photosHtml}</div>`) : ''}
-        </div>`;
-    }).join('');
-    return `<div class="rp-actions"><div class="rp-actions-title">Actions Raised (${ncItems.length})</div>${blocks}</div>`;
+    return found;
   }
   function buildHsReportSectionHtml(topicRef, def) {
     const riskKey = `hs_topic_${topicRef}`;
@@ -1296,7 +1300,6 @@
           <tr><td class="rp-hdr-cell rp-colhead">Action Plan Ref:</td><td class="rp-hdr-cell rp-colhead">General Requirements</td><td class="rp-hdr-cell rp-colhead">Yes</td><td class="rp-hdr-cell rp-colhead">No</td><td class="rp-hdr-cell rp-colhead">N/A</td></tr>
           ${rows}
         </table>
-        ${buildActionsHtml('hs', def)}
       </div>`;
   }
   function buildFireReportSectionHtml(secKey, def) {
@@ -1327,30 +1330,51 @@
           <tr><td class="rp-hdr-cell rp-colhead"></td><td class="rp-hdr-cell rp-colhead"></td><td class="rp-hdr-cell rp-colhead">Yes</td><td class="rp-hdr-cell rp-colhead">No</td><td class="rp-hdr-cell rp-colhead">N/A</td></tr>
           ${rows}
         </table>
-        ${buildActionsHtml('fire', def)}
       </div>`;
   }
   function buildReportHtml(type) {
     const m = currentVisit.meta;
-    let blocksHtml = '';
+    const label = escapeHtml(getType(type).label);
+    const seen = new Set();
+    let assessmentHtml = '';
+    let actionCards = '';
+    let actionCount = 0;
     let included = 0;
-    if (type === 'hs') {
-      Object.entries(REPORT_MAP.hs || {}).forEach(([topicRef, def]) => {
-        if (!reportSectionHasContent(def, `hs_topic_${topicRef}`)) return;
-        included++;
-        blocksHtml += buildHsReportSectionHtml(topicRef, def);
+    const entries = Object.entries((type === 'hs' ? REPORT_MAP.hs : REPORT_MAP.fire) || {});
+    entries.forEach(([key, def]) => {
+      const riskKey = type === 'hs' ? `hs_topic_${key}` : `fire_${key}`;
+      if (!reportSectionHasContent(def, riskKey)) return;
+      included++;
+      assessmentHtml += type === 'hs' ? buildHsReportSectionHtml(key, def) : buildFireReportSectionHtml(key, def);
+      collectNcItems(def, seen).forEach(({ item, answer }) => {
+        actionCards += renderActionCard(type, item, answer);
+        actionCount++;
       });
-    } else {
-      Object.entries(REPORT_MAP.fire || {}).forEach(([secKey, def]) => {
-        if (!reportSectionHasContent(def, `fire_${secKey}`)) return;
-        included++;
-        blocksHtml += buildFireReportSectionHtml(secKey, def);
-      });
+    });
+
+    if (!included) {
+      return { included: 0, html: `
+        <div class="rp-title">${label} Report — ${escapeHtml(m.site)}</div>
+        <div class="rp-subtitle">${escapeHtml(fmtDate(m.date))}${m.inspector ? ' · ' + escapeHtml(m.inspector) : ''}${m.reportRef ? ' · ' + escapeHtml(m.reportRef) : ''}</div>
+        <div class="rp-empty">Nothing scored or answered yet for this report.</div>
+      ` };
     }
-    return { included, html: `
-      <div class="rp-title">${escapeHtml(getType(type).label)} Report — ${escapeHtml(m.site)}</div>
+
+    const section1 = actionCount ? `
+      <div class="rp-section-title">Section 1 - ${label} Report — Compliance Action Plan</div>
+      <div class="rp-actions">${actionCards}</div>
+      <div class="rp-pagebreak"></div>
+    ` : '';
+    const section2 = `
+      <div class="rp-section-title">${actionCount ? 'Section 2 - ' : ''}${label} Report — Risk Assessment</div>
       <div class="rp-subtitle">${escapeHtml(fmtDate(m.date))}${m.inspector ? ' · ' + escapeHtml(m.inspector) : ''}${m.reportRef ? ' · ' + escapeHtml(m.reportRef) : ''}</div>
-      ${blocksHtml || '<div class="rp-empty">Nothing scored or answered yet for this report.</div>'}
+      ${assessmentHtml}
+    `;
+
+    return { included, html: `
+      <div class="rp-title">${label} Report — ${escapeHtml(m.site)}</div>
+      ${section1}
+      ${section2}
     ` };
   }
 
