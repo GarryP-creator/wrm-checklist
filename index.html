@@ -278,6 +278,17 @@
   #hs-app-root .hs-li-count { font-size: 12px; color: var(--sub); font-weight: 500; }
   #hs-app-root .hs-li-chevron { color: var(--sub); font-size: 18px; flex-shrink: 0; }
 
+  #hs-app-root .hs-li-detail-card {
+    background: var(--floor); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px; margin-bottom: 12px;
+  }
+  #hs-app-root .hs-li-detail-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  #hs-app-root .hs-li-detail-status {
+    background: var(--bad-bg); color: var(--bad); font-weight: 700; font-size: 11.5px;
+    border-radius: 999px; padding: 3px 10px; margin-left: auto;
+  }
+  #hs-app-root .hs-li-detail-name { font-weight: 700; font-size: 15px; line-height: 1.35; }
+
   #hs-app-root .hs-link-row {
     margin-top: 8px; font-size: 12px; color: var(--navy); background: #EAF0FB;
     border: 1px solid #C9D6EE; border-radius: 8px; padding: 7px 10px;
@@ -1224,10 +1235,12 @@
   let logIssueSectionIdx = null;
   let logIssueTopicKey = null;
   let logIssueQuery = '';
+  let logIssueDetailItemId = null;
   function openLogIssue() {
     logIssueSectionIdx = null;
     logIssueTopicKey = null;
     logIssueQuery = '';
+    logIssueDetailItemId = null;
     renderLogIssue();
   }
   function logIssueMatches(item) {
@@ -1317,7 +1330,7 @@
           <button class="hs-icon-btn" id="btn-back-logissue" style="background:var(--floor);color:var(--navy);">←</button>
           <strong>Log an Issue</strong>
         </div>
-        <p style="color:var(--sub);font-size:13px;margin-top:0;">Search for what you found, or browse by section. Tapping an item marks it Not Compliant and takes you straight there to add notes or a photo.</p>
+        <p style="color:var(--sub);font-size:13px;margin-top:0;">Search for what you found, or browse by section. Tapping an item marks it Not Compliant, then asks for a photo or notes.</p>
         <div class="hs-search-row">
           <span class="hs-search-icon">🔎</span>
           <input type="text" id="logissue-search" class="hs-search-input" placeholder="e.g. first aid, smoking, fire door…" value="${escapeHtml(logIssueQuery)}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
@@ -1327,7 +1340,7 @@
         ${body}
       </div>`;
 
-    document.getElementById('btn-back-logissue').onclick = () => showScreen('view-checklist');
+    document.getElementById('btn-back-logissue').onclick = () => { renderChecklist(); showScreen('view-checklist'); };
     const searchInput = document.getElementById('logissue-search');
     searchInput.oninput = () => { logIssueQuery = searchInput.value; renderLogIssue(); };
     if (searchWasFocused) {
@@ -1363,27 +1376,136 @@
     currentVisit.meta.updatedAt = new Date().toISOString();
     if (isLinked(itemId) && !isUnlinkedForVisit(itemId)) propagateToPartner(itemId);
     markDirty();
-
-    // Expand the item's section so it's visible when we land back on the checklist.
+    logIssueDetailItemId = itemId;
+    renderLogIssueDetail(itemId);
+  }
+  // Dedicated "add details" step, shown right after picking an item — notes and a photo,
+  // all without leaving the Log an Issue screen. Uses fixed element IDs (only one item's
+  // detail is ever shown at a time here) so nothing collides with the main checklist's
+  // own per-item elements sitting in the background.
+  function renderLogIssueDetail(itemId) {
     const item = findItemById(itemId);
-    const sections = getSections(currentTab);
-    const secIdx = sections.findIndex(sec => sec.topics.some(t => t.items.some(i => i.id === itemId)));
-    if (secIdx > -1) openSections.add(secIdx);
-    filterPriority1 = false;
-    filterNotCompliant = false;
-    filterIncomplete = false;
-    searchQuery = '';
+    if (!item) { renderLogIssue(); return; }
+    const a = currentVisit.answers[itemId] || {};
+    const pClass = item.priority === '1' ? 'p1' : item.priority === '2' ? 'p2' : 'p3';
+    const pLabel = item.priority ? 'P' + item.priority : '—';
+    const photoCount = (a.photos || []).length;
 
-    renderChecklist();
-    showScreen('view-checklist');
-    toast('Marked Not Compliant — add notes or a photo');
-    setTimeout(() => {
-      const notesEl = document.querySelector(`[data-notes="${itemId}"]`);
-      if (notesEl) {
-        notesEl.scrollIntoView({ block: 'center' });
-        notesEl.focus();
+    document.getElementById('view-logissue').innerHTML = `
+      <div class="hs-container hs-export-wrap">
+        <div class="hs-back-row">
+          <button class="hs-icon-btn" id="btn-back-logissue-detail" style="background:var(--floor);color:var(--navy);">←</button>
+          <strong>Add details</strong>
+        </div>
+        <div class="hs-li-detail-card">
+          <div class="hs-li-detail-head">
+            <span class="hs-ref-badge mono">${escapeHtml(item.ref)}</span>
+            <span class="hs-p-badge" style="background:var(--${pClass})">${pLabel}</span>
+            <span class="hs-li-detail-status">Not Compliant</span>
+          </div>
+          <div class="hs-li-detail-name">${escapeHtml(item.name)}</div>
+          ${item.finding ? `<div class="hs-item-finding"><strong>What to look for:</strong> ${escapeHtml(item.finding)}</div>` : ''}
+        </div>
+        <textarea class="hs-notes" id="li-notes" placeholder="Notes / evidence for write-up…">${escapeHtml(a.notes || '')}</textarea>
+        <div class="hs-photo-row">
+          <label class="hs-photo-add">
+            <span class="hs-photo-add-label" id="li-photo-label">📷 Add photo${photoCount ? ` (${photoCount})` : ''}</span>
+            <input type="file" accept="image/*" capture="environment" multiple id="li-photo-input">
+          </label>
+          <div class="hs-photo-thumbs" id="li-photothumbs">${renderLogIssuePhotoThumbsHtml(itemId)}</div>
+        </div>
+        <button class="hs-new-visit-btn" id="btn-li-log-another" style="margin-top:16px;">Log another issue</button>
+        <button class="hs-btn-secondary" id="btn-li-done" style="width:100%;margin-top:10px;">Done — back to checklist</button>
+      </div>`;
+
+    document.getElementById('btn-back-logissue-detail').onclick = () => { logIssueDetailItemId = null; renderLogIssue(); };
+    const notesEl = document.getElementById('li-notes');
+    notesEl.oninput = () => {
+      const cur = currentVisit.answers[itemId] || { status: null, notes: '' };
+      cur.notes = notesEl.value;
+      currentVisit.answers[itemId] = cur;
+      currentVisit.meta.updatedAt = new Date().toISOString();
+      if (isLinked(itemId) && !isUnlinkedForVisit(itemId)) propagateToPartner(itemId);
+      markDirty();
+    };
+    setTimeout(() => { notesEl.focus(); }, 60);
+
+    document.getElementById('li-photo-input').onchange = (e) => {
+      const files = Array.from(e.target.files || []);
+      e.target.value = '';
+      if (files.length) handleLogIssuePhotoAdd(itemId, files);
+    };
+    bindLogIssuePhotoThumbEvents(itemId);
+
+    document.getElementById('btn-li-log-another').onclick = () => {
+      logIssueDetailItemId = null;
+      logIssueSectionIdx = null;
+      logIssueTopicKey = null;
+      logIssueQuery = '';
+      renderLogIssue();
+      window.scrollTo(0, 0);
+    };
+    document.getElementById('btn-li-done').onclick = () => {
+      logIssueDetailItemId = null;
+      renderChecklist();
+      showScreen('view-checklist');
+    };
+  }
+  function renderLogIssuePhotoThumbsHtml(itemId) {
+    const photos = (currentVisit.answers[itemId] && currentVisit.answers[itemId].photos) || [];
+    return photos.map((p, i) => `
+      <div class="hs-thumb">
+        <img src="${p.dataUrl}" data-li-photo-view="${i}">
+        <button class="hs-thumb-del" data-li-photo-del="${i}">×</button>
+      </div>`).join('');
+  }
+  function bindLogIssuePhotoThumbEvents(itemId) {
+    const container = document.getElementById('li-photothumbs');
+    if (!container) return;
+    container.querySelectorAll('[data-li-photo-view]').forEach(el => {
+      el.onclick = () => openLightbox(itemId, parseInt(el.getAttribute('data-li-photo-view')));
+    });
+    container.querySelectorAll('[data-li-photo-del]').forEach(el => {
+      el.onclick = () => {
+        const idx = parseInt(el.getAttribute('data-li-photo-del'));
+        const cur = currentVisit.answers[itemId];
+        if (!cur || !cur.photos) return;
+        cur.photos.splice(idx, 1);
+        currentVisit.meta.updatedAt = new Date().toISOString();
+        if (isLinked(itemId) && !isUnlinkedForVisit(itemId)) propagateToPartner(itemId);
+        markDirty();
+        updateLogIssuePhotos(itemId);
+      };
+    });
+  }
+  function updateLogIssuePhotos(itemId) {
+    const container = document.getElementById('li-photothumbs');
+    if (!container) return;
+    container.innerHTML = renderLogIssuePhotoThumbsHtml(itemId);
+    bindLogIssuePhotoThumbEvents(itemId);
+    const labelSpan = document.getElementById('li-photo-label');
+    const count = ((currentVisit.answers[itemId] && currentVisit.answers[itemId].photos) || []).length;
+    if (labelSpan) labelSpan.textContent = `📷 Add photo${count ? ` (${count})` : ''}`;
+  }
+  async function handleLogIssuePhotoAdd(itemId, files) {
+    const cur = currentVisit.answers[itemId] || { status: null, notes: '' };
+    if (!cur.photos) cur.photos = [];
+    toast(files.length > 1 ? 'Processing photos…' : 'Processing photo…');
+    for (const file of files) {
+      try {
+        const dataUrl = await compressImage(file);
+        cur.photos.push({ id: 'p' + Date.now() + Math.random().toString(36).slice(2, 7), dataUrl, takenAt: new Date().toISOString() });
+      } catch (err) {
+        console.error('photo processing failed', err);
       }
-    }, 50);
+    }
+    currentVisit.answers[itemId] = cur;
+    currentVisit.meta.updatedAt = new Date().toISOString();
+    if (isLinked(itemId) && !isUnlinkedForVisit(itemId)) propagateToPartner(itemId);
+    markDirty();
+    updateLogIssuePhotos(itemId);
+    toast('Photo added — tap Save progress to keep it');
+    warnIfLarge();
   }
 
 
