@@ -257,6 +257,27 @@
   }
   #hs-app-root .hs-search-count { font-size: 12px; color: var(--sub); margin: 8px 2px 0; }
 
+  #hs-app-root .hs-log-issue-btn {
+    width: 100%; background: var(--navy); color: #fff; border: none; border-radius: 12px;
+    padding: 13px; font-size: 14.5px; font-weight: 700; margin: 12px 0 4px;
+  }
+  #hs-app-root .hs-log-issue-btn:active { background: var(--navy-deep); }
+  #hs-app-root .hs-li-breadcrumb { font-size: 12.5px; color: var(--sub); margin: 12px 2px 8px; line-height: 1.6; }
+  #hs-app-root .hs-li-crumb { background: none; border: none; color: var(--navy); font-weight: 700; font-size: 12.5px; padding: 0; }
+  #hs-app-root .hs-li-crumb-current { color: var(--sub); font-weight: 600; }
+  #hs-app-root .hs-li-sep { color: var(--sub); margin: 0 2px; }
+  #hs-app-root .hs-li-list { display: flex; flex-direction: column; gap: 8px; }
+  #hs-app-root .hs-li-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    background: var(--paper); border: 1px solid var(--line); border-radius: 10px;
+    padding: 13px 14px; text-align: left; width: 100%;
+  }
+  #hs-app-root .hs-li-row:active { background: var(--floor); }
+  #hs-app-root .hs-li-row-main { display: flex; flex-direction: column; gap: 4px; font-size: 14px; font-weight: 600; flex: 1; min-width: 0; }
+  #hs-app-root .hs-li-row .hs-ref-badge { align-self: flex-start; }
+  #hs-app-root .hs-li-count { font-size: 12px; color: var(--sub); font-weight: 500; }
+  #hs-app-root .hs-li-chevron { color: var(--sub); font-size: 18px; flex-shrink: 0; }
+
   #hs-app-root .hs-link-row {
     margin-top: 8px; font-size: 12px; color: var(--navy); background: #EAF0FB;
     border: 1px solid #C9D6EE; border-radius: 8px; padding: 7px 10px;
@@ -475,6 +496,22 @@
   // H&S scores per topic (e.g. "3.6 Electrical Safety" — a real hazard sub-category).
   // Fire Safety scores per section (its topicRef doesn't subdivide — the section IS the hazard category).
   const RISK_LEVEL_BY_TYPE = { hs: 'topic', fire: 'section' };
+  // Policy (sectionIdx 0) and Organisation (sectionIdx 1) are administrative compliance checks,
+  // not physical hazards — no severity/likelihood scoring, and no Risk Assessment entry in the
+  // report. A non-compliance there still raises a normal action, just with no hazard block behind it.
+  const RISK_EXCLUDED_SECTION_IDX = new Set([0, 1]);
+  const topicSectionIdxCache = {};
+  function topicSectionIdx(topicRef) {
+    if (topicRef in topicSectionIdxCache) return topicSectionIdxCache[topicRef];
+    const item = getItems('hs').find(i => i.topicRef === topicRef);
+    const idx = item ? item.sectionIdx : null;
+    topicSectionIdxCache[topicRef] = idx;
+    return idx;
+  }
+  function topicNeedsRiskScoring(topicRef) {
+    const idx = topicSectionIdx(topicRef);
+    return idx === null || !RISK_EXCLUDED_SECTION_IDX.has(idx);
+  }
   function riskBand(sev, lik) {
     if (!sev || !lik) return null;
     return RISK_MATRIX[sev + '-' + lik] || null;
@@ -757,7 +794,7 @@
         matchCount += visItems.length;
         const itemsHtml = visItems.map(item => renderItem(item)).join('');
         const label = topic.topicName ? `${topic.topicRef} · ${escapeHtml(topic.topicName)}` : topic.topicRef;
-        const topicRiskBox = (riskLevel === 'topic' && !isSearching)
+        const topicRiskBox = (riskLevel === 'topic' && !isSearching && topicNeedsRiskScoring(topic.topicRef))
           ? renderRiskBox(`${type}_topic_${topic.topicRef}`, null) : '';
         const topicBulkRow = (riskLevel === 'topic' && !isSearching)
           ? renderBulkRow(type, topic.items.map(i => i.id), true) : '';
@@ -807,6 +844,7 @@
         <div class="hs-progress-label"><span>${answered} of ${total} items</span><span>${Math.round(answered/total*100)}%</span></div>
       </div>
       <div class="hs-container">
+        <button class="hs-log-issue-btn" id="btn-log-issue">🚩 Log an Issue</button>
         <div class="hs-search-row">
           <span class="hs-search-icon">🔎</span>
           <input type="text" id="search-input" class="hs-search-input" placeholder="Find a question…" value="${escapeHtml(searchQuery)}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
@@ -840,6 +878,7 @@
       renderHome();
     };
     document.getElementById('btn-photos').onclick = () => { renderPhotosScreen(); showScreen('view-photos'); };
+    document.getElementById('btn-log-issue').onclick = () => { openLogIssue(); showScreen('view-logissue'); };
     document.getElementById('btn-report').onclick = () => { renderReportPicker(); showScreen('view-report'); };
     document.getElementById('btn-export').onclick = () => { renderExport(); showScreen('view-export'); };
     document.querySelectorAll('[data-checklist-tab]').forEach((el) => {
@@ -1181,7 +1220,173 @@
     });
   }
 
-  // ---------- Export (plain-text summary) ----------
+  // ---------- Log an Issue: fast-entry picker (Section -> Topic -> Item, or search to jump straight there) ----------
+  let logIssueSectionIdx = null;
+  let logIssueTopicKey = null;
+  let logIssueQuery = '';
+  function openLogIssue() {
+    logIssueSectionIdx = null;
+    logIssueTopicKey = null;
+    logIssueQuery = '';
+    renderLogIssue();
+  }
+  function logIssueMatches(item) {
+    if (!logIssueQuery.trim()) return false;
+    const q = logIssueQuery.trim().toLowerCase();
+    const haystack = [item.ref, item.name, item.finding, item.topicName].filter(Boolean).join(' ').toLowerCase();
+    return haystack.includes(q);
+  }
+  function renderLogIssue() {
+    const sections = getSections(currentTab);
+    const isSearching = !!logIssueQuery.trim();
+    const searchWasFocused = document.activeElement && document.activeElement.id === 'logissue-search';
+    const searchCursor = searchWasFocused ? document.activeElement.selectionStart : null;
+
+    let crumb = `<button class="hs-li-crumb" data-li-crumb="root">${escapeHtml(getType(currentTab).label)}</button>`;
+    let body = '';
+
+    if (isSearching) {
+      // Flat search across every item in the current tab, regardless of drill-down position.
+      const matches = [];
+      sections.forEach(sec => sec.topics.forEach(topic => topic.items.forEach(item => {
+        if (logIssueMatches(item)) matches.push(item);
+      })));
+      body = matches.length ? `
+        <div class="hs-li-list">
+          ${matches.map(item => `
+            <button class="hs-li-row" data-li-item="${item.id}">
+              <div class="hs-li-row-main">
+                <span class="hs-ref-badge mono">${escapeHtml(item.ref)}</span>
+                <span>${escapeHtml(item.name)}</span>
+              </div>
+              <span class="hs-li-chevron">›</span>
+            </button>`).join('')}
+        </div>` : `<div class="hs-empty">No matches for "${escapeHtml(logIssueQuery.trim())}".</div>`;
+    } else if (logIssueTopicKey) {
+      // Level 2: items within one topic
+      const [secIdx, topicRef] = logIssueTopicKey.split('|');
+      const sec = sections[parseInt(secIdx)];
+      const topic = sec && sec.topics.find(t => t.topicRef === topicRef);
+      if (topic) {
+        crumb += ` <span class="hs-li-sep">›</span> <button class="hs-li-crumb" data-li-crumb="section:${secIdx}">${escapeHtml(sec.title)}</button>`;
+        crumb += ` <span class="hs-li-sep">›</span> <span class="hs-li-crumb-current">${escapeHtml(topic.topicName || topic.topicRef)}</span>`;
+        body = `
+          <div class="hs-li-list">
+            ${topic.items.map(item => `
+              <button class="hs-li-row" data-li-item="${item.id}">
+                <div class="hs-li-row-main">
+                  <span class="hs-ref-badge mono">${escapeHtml(item.ref)}</span>
+                  <span>${escapeHtml(item.name)}</span>
+                </div>
+                <span class="hs-li-chevron">›</span>
+              </button>`).join('')}
+          </div>`;
+      }
+    } else if (logIssueSectionIdx !== null) {
+      // Level 1: topics (keywords) within one section
+      const sec = sections[logIssueSectionIdx];
+      if (sec) {
+        crumb += ` <span class="hs-li-sep">›</span> <span class="hs-li-crumb-current">${escapeHtml(sec.title)}</span>`;
+        body = `
+          <div class="hs-li-list">
+            ${sec.topics.map(topic => `
+              <button class="hs-li-row" data-li-topic="${logIssueSectionIdx}|${topic.topicRef}">
+                <div class="hs-li-row-main">
+                  <span>${escapeHtml(topic.topicName || topic.topicRef)}</span>
+                  <span class="hs-li-count">${topic.items.length} item${topic.items.length===1?'':'s'}</span>
+                </div>
+                <span class="hs-li-chevron">›</span>
+              </button>`).join('')}
+          </div>`;
+      }
+    } else {
+      // Level 0: sections
+      body = `
+        <div class="hs-li-list">
+          ${sections.map((sec, idx) => `
+            <button class="hs-li-row" data-li-section="${idx}">
+              <div class="hs-li-row-main"><span>${escapeHtml(sec.title)}</span><span class="hs-li-count">${sec.count} items</span></div>
+              <span class="hs-li-chevron">›</span>
+            </button>`).join('')}
+        </div>`;
+    }
+
+    document.getElementById('view-logissue').innerHTML = `
+      <div class="hs-container hs-export-wrap">
+        <div class="hs-back-row">
+          <button class="hs-icon-btn" id="btn-back-logissue" style="background:var(--floor);color:var(--navy);">←</button>
+          <strong>Log an Issue</strong>
+        </div>
+        <p style="color:var(--sub);font-size:13px;margin-top:0;">Search for what you found, or browse by section. Tapping an item marks it Not Compliant and takes you straight there to add notes or a photo.</p>
+        <div class="hs-search-row">
+          <span class="hs-search-icon">🔎</span>
+          <input type="text" id="logissue-search" class="hs-search-input" placeholder="e.g. first aid, smoking, fire door…" value="${escapeHtml(logIssueQuery)}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+          ${isSearching ? `<button class="hs-search-clear" id="logissue-search-clear">✕</button>` : ''}
+        </div>
+        <div class="hs-li-breadcrumb">${crumb}</div>
+        ${body}
+      </div>`;
+
+    document.getElementById('btn-back-logissue').onclick = () => showScreen('view-checklist');
+    const searchInput = document.getElementById('logissue-search');
+    searchInput.oninput = () => { logIssueQuery = searchInput.value; renderLogIssue(); };
+    if (searchWasFocused) {
+      searchInput.focus();
+      if (searchCursor != null) searchInput.setSelectionRange(searchCursor, searchCursor);
+    }
+    const clearBtn = document.getElementById('logissue-search-clear');
+    if (clearBtn) clearBtn.onclick = () => { logIssueQuery = ''; renderLogIssue(); };
+
+    document.querySelectorAll('[data-li-crumb]').forEach(el => {
+      el.onclick = () => {
+        const v = el.getAttribute('data-li-crumb');
+        if (v === 'root') { logIssueSectionIdx = null; logIssueTopicKey = null; }
+        else if (v.startsWith('section:')) { logIssueSectionIdx = parseInt(v.split(':')[1]); logIssueTopicKey = null; }
+        logIssueQuery = '';
+        renderLogIssue();
+      };
+    });
+    document.querySelectorAll('[data-li-section]').forEach(el => {
+      el.onclick = () => { logIssueSectionIdx = parseInt(el.getAttribute('data-li-section')); renderLogIssue(); };
+    });
+    document.querySelectorAll('[data-li-topic]').forEach(el => {
+      el.onclick = () => { logIssueTopicKey = el.getAttribute('data-li-topic'); renderLogIssue(); };
+    });
+    document.querySelectorAll('[data-li-item]').forEach(el => {
+      el.onclick = () => selectLogIssueItem(el.getAttribute('data-li-item'));
+    });
+  }
+  function selectLogIssueItem(itemId) {
+    const cur = currentVisit.answers[itemId] || { status: null, notes: '' };
+    cur.status = 'NC';
+    currentVisit.answers[itemId] = cur;
+    currentVisit.meta.updatedAt = new Date().toISOString();
+    if (isLinked(itemId) && !isUnlinkedForVisit(itemId)) propagateToPartner(itemId);
+    markDirty();
+
+    // Expand the item's section so it's visible when we land back on the checklist.
+    const item = findItemById(itemId);
+    const sections = getSections(currentTab);
+    const secIdx = sections.findIndex(sec => sec.topics.some(t => t.items.some(i => i.id === itemId)));
+    if (secIdx > -1) openSections.add(secIdx);
+    filterPriority1 = false;
+    filterNotCompliant = false;
+    filterIncomplete = false;
+    searchQuery = '';
+
+    renderChecklist();
+    showScreen('view-checklist');
+    toast('Marked Not Compliant — add notes or a photo');
+    setTimeout(() => {
+      const notesEl = document.querySelector(`[data-notes="${itemId}"]`);
+      if (notesEl) {
+        notesEl.scrollIntoView({ block: 'center' });
+        notesEl.focus();
+      }
+    }, 50);
+  }
+
+
   // ---------- Printable report (H&S / Fire Safety, each separate) ----------
   // Same auto-fill rule as agreed: any Not Compliant among a letter's mapped items -> No.
   // Else any Compliant (and no NC) -> Yes. Else all answered are N/A -> N/A. Else blank.
@@ -1357,7 +1562,10 @@
       const riskKey = type === 'hs' ? `hs_topic_${key}` : `fire_${key}`;
       if (!reportSectionHasContent(def, riskKey)) return;
       included++;
-      assessmentHtml += type === 'hs' ? buildHsReportSectionHtml(key, def) : buildFireReportSectionHtml(key, def);
+      const includeInAssessment = type === 'fire' || topicNeedsRiskScoring(key);
+      if (includeInAssessment) {
+        assessmentHtml += type === 'hs' ? buildHsReportSectionHtml(key, def) : buildFireReportSectionHtml(key, def);
+      }
       collectNcItems(def, seen).forEach(({ item, answer }) => {
         actionCards += renderActionCard(type, item, answer);
         actionCount++;
@@ -1375,18 +1583,20 @@
     const section1 = actionCount ? `
       <div class="rp-section-title">Section 1 - ${label} Report — Compliance Action Plan</div>
       <div class="rp-actions">${actionCards}</div>
-      <div class="rp-pagebreak"></div>
+      ${assessmentHtml ? '<div class="rp-pagebreak"></div>' : ''}
     ` : '';
-    const section2 = `
+    const section2 = assessmentHtml ? `
       <div class="rp-section-title">${actionCount ? 'Section 2 - ' : ''}${label} Report — Risk Assessment</div>
       <div class="rp-subtitle">${escapeHtml(fmtDate(m.date))}${m.inspector ? ' · ' + escapeHtml(m.inspector) : ''}${m.reportRef ? ' · ' + escapeHtml(m.reportRef) : ''}</div>
       ${assessmentHtml}
-    `;
+    ` : '';
+    const bodyEmpty = !section1 && !section2;
 
     return { included, html: `
       <div class="rp-title">${label} Report — ${escapeHtml(m.site)}</div>
       ${section1}
       ${section2}
+      ${bodyEmpty ? '<div class="rp-empty">Everything checked so far is compliant or doesn\'t need a risk assessment — nothing to show yet.</div>' : ''}
     ` };
   }
 
@@ -1558,6 +1768,7 @@
       <div id="view-new" class="hs-screen"></div>
       <div id="view-checklist" class="hs-screen"></div>
       <div id="view-photos" class="hs-screen"></div>
+      <div id="view-logissue" class="hs-screen"></div>
       <div id="view-report" class="hs-screen"></div>
       <div id="view-export" class="hs-screen"></div>
     `;
