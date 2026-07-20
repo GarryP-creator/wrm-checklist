@@ -1643,10 +1643,14 @@
     if (!text) return [];
     // Break a recommendation paragraph into separate action lines, matching the
     // template's line-per-instruction style, without mangling abbreviations like "e.g."
-    return text.split(/(?<=[a-z0-9)])\.\s+(?=[A-Z])/)
+    // Two split points: a full stop before a new sentence, or "; and " joining two actions
+    // into one sentence (keeps the semicolon on the first line, drops the "and").
+    // Deliberately doesn't split on "; or " (alternatives, not separate actions) or other
+    // semicolon uses (citations, sub-clauses within one instruction).
+    return text.split(/(?:(?<=[a-z0-9)])\.\s+(?=[A-Z]))|(?:(?<=;)\s+and\s+(?=[A-Z]))/)
       .map(s => s.trim())
       .filter(Boolean)
-      .map(s => /[.!?]$/.test(s) ? s : s + '.');
+      .map(s => /[.!?;]$/.test(s) ? s : s + '.');
   }
   // The library's recommended actions are a starting point, not gospel — a consultant might need
   // all of them, just one, none at all, or something the library never anticipated. This lets
