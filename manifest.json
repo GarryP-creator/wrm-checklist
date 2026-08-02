@@ -1,13 +1,15 @@
 {
-  "name": "Site Visit H&S / Fire Checklist",
-  "short_name": "Site Checklists",
+  "name": "WRM Report Builder",
+  "short_name": "WRM Reports",
+  "description": "Every check, one report. Health & Safety and Fire Safety site visit reports, offline.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "background_color": "#F5F6FA",
   "theme_color": "#1F3864",
   "icons": [
-    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "./apple-touch-icon-180.png", "sizes": "180x180", "type": "image/png", "purpose": "any" }
   ]
 }

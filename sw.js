@@ -1,9 +1,9 @@
-// Service worker for the Site Visit H&S Checklist.
+// Service worker for the WRM Report Builder.
 // Caches the app so it keeps working with no signal after the first successful load.
 // This file must sit in the same folder as the checklist's index.html on the server.
 
-const CACHE = 'hs-checklist-offline-v4';
-const SHELL_URLS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
+const CACHE = 'hs-checklist-offline-v5';
+const SHELL_URLS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './apple-touch-icon-180.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

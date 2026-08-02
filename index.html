@@ -5,13 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Site Checklists">
+<meta name="apple-mobile-web-app-title" content="WRM Reports">
 <meta name="theme-color" content="#1F3864">
 <meta name="mobile-web-app-capable" content="yes">
-<title>Site Visit Checklists (Offline)</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%231F3864'/%3E%3Cpath d='M28 52 L43 67 L74 33' stroke='white' stroke-width='9' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<title>WRM Report Builder (Offline)</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%20512%20512%27%3E%3Crect%20width%3D%27512%27%20height%3D%27512%27%20rx%3D%27115%27%20fill%3D%27%231F3864%27%2F%3E%3Cpath%20d%3D%27M132%20171%20L183%20307%20L235%20171%20L286%20307%20L380%20111%27%20fill%3D%27none%27%20stroke%3D%27%23FFFFFF%27%20stroke-width%3D%2734%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%2F%3E%3Ctext%20x%3D%27256%27%20y%3D%27410%27%20text-anchor%3D%27middle%27%20font-family%3D%27Helvetica%2C%20Arial%2C%20sans-serif%27%20font-size%3D%2762%27%20font-weight%3D%27500%27%20fill%3D%27%23FFFFFF%27%20letter-spacing%3D%279%27%3EWRM%3C%2Ftext%3E%3Crect%20x%3D%2798%27%20y%3D%27438%27%20width%3D%27316%27%20height%3D%2712%27%20rx%3D%276%27%20fill%3D%27%23FFFFFF%27%20fill-opacity%3D%270.5%27%2F%3E%3C%2Fsvg%3E">
 <link rel="manifest" href="./manifest.json">
-<link rel="apple-touch-icon" href="./icon-192.png">
+<!-- iOS ignores the manifest icons for the home screen and reads this instead. It must be
+     a square, fully opaque PNG: iOS applies its own rounded mask, so a pre-rounded or
+     transparent source renders with dark corners. -->
+<link rel="apple-touch-icon" href="./apple-touch-icon-180.png">
+<link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon-180.png">
 </head>
 <body style="margin:0;padding:0;">
 <div id="hs-app-root"></div>
@@ -80,7 +84,31 @@
   .hs-home-header p { margin: 0; color: var(--sub); font-size: 14px; }
 
   .hs-welcome-wrap { padding: calc(36px + env(safe-area-inset-top)) 20px 28px; text-align: center; }
-  .hs-welcome-logo { height: 44px; margin-bottom: 28px; }
+  .hs-welcome-logo { height: 34px; margin-bottom: 24px; }
+
+  /* The app mark. Inlined as a data URI rather than referencing the PNGs so it still renders
+     with no signal before the service worker has cached anything. */
+  .hs-app-mark { display: block; background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%20512%20512%27%3E%3Crect%20width%3D%27512%27%20height%3D%27512%27%20rx%3D%27115%27%20fill%3D%27%231F3864%27%2F%3E%3Cpath%20d%3D%27M132%20171%20L183%20307%20L235%20171%20L286%20307%20L380%20111%27%20fill%3D%27none%27%20stroke%3D%27%23FFFFFF%27%20stroke-width%3D%2734%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%2F%3E%3Ctext%20x%3D%27256%27%20y%3D%27410%27%20text-anchor%3D%27middle%27%20font-family%3D%27Helvetica%2C%20Arial%2C%20sans-serif%27%20font-size%3D%2762%27%20font-weight%3D%27500%27%20fill%3D%27%23FFFFFF%27%20letter-spacing%3D%279%27%3EWRM%3C%2Ftext%3E%3Crect%20x%3D%2798%27%20y%3D%27438%27%20width%3D%27316%27%20height%3D%2712%27%20rx%3D%276%27%20fill%3D%27%23FFFFFF%27%20fill-opacity%3D%270.5%27%2F%3E%3C%2Fsvg%3E") center / contain no-repeat; }
+  .hs-welcome-mark { width: 84px; height: 84px; margin: 0 auto 16px; }
+  .hs-strapline {
+    color: var(--navy); font-size: 14px; font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; margin: 0 0 18px;
+  }
+  .hs-home-header-row { display: flex; align-items: flex-start; gap: 12px; }
+  .hs-home-header-row h1 { flex: 1; min-width: 0; }
+  .hs-home-mark { width: 40px; height: 40px; flex: 0 0 auto; margin-top: 2px; }
+  .hs-home-strapline {
+    color: var(--navy); font-size: 11.5px; font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; margin: 0 0 8px; opacity: .75;
+  }
+  /* Corner mark on every screen that uses the standard back-row header. Added via ::after so it
+     appears on all of them from one rule; margin-left:auto pins it to the far corner, after any
+     action button the row already carries. The print CSS hides .hs-back-row outright, so this
+     never reaches the PDF. */
+  .hs-back-row::after {
+    content: ''; width: 32px; height: 32px; flex: 0 0 auto; margin-left: auto;
+    background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%20512%20512%27%3E%3Crect%20width%3D%27512%27%20height%3D%27512%27%20rx%3D%27115%27%20fill%3D%27%231F3864%27%2F%3E%3Cpath%20d%3D%27M132%20171%20L183%20307%20L235%20171%20L286%20307%20L380%20111%27%20fill%3D%27none%27%20stroke%3D%27%23FFFFFF%27%20stroke-width%3D%2734%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%2F%3E%3Ctext%20x%3D%27256%27%20y%3D%27410%27%20text-anchor%3D%27middle%27%20font-family%3D%27Helvetica%2C%20Arial%2C%20sans-serif%27%20font-size%3D%2762%27%20font-weight%3D%27500%27%20fill%3D%27%23FFFFFF%27%20letter-spacing%3D%279%27%3EWRM%3C%2Ftext%3E%3Crect%20x%3D%2798%27%20y%3D%27438%27%20width%3D%27316%27%20height%3D%2712%27%20rx%3D%276%27%20fill%3D%27%23FFFFFF%27%20fill-opacity%3D%270.5%27%2F%3E%3C%2Fsvg%3E") center / contain no-repeat; opacity: .9;
+  }
   .hs-welcome-title { font-size: 20px; font-weight: 700; color: var(--navy); line-height: 1.35; margin: 0 0 10px; letter-spacing: -0.01em; }
   .hs-welcome-sub { color: var(--sub); font-size: 14px; margin: 0 0 22px; }
   .hs-welcome-steps { text-align: left; margin-bottom: 26px; }
@@ -1355,8 +1383,10 @@
   function renderWelcomeScreen() {
     document.getElementById('view-welcome').innerHTML = `
       <div class="hs-container hs-welcome-wrap">
+        <div class="hs-app-mark hs-welcome-mark" role="img" aria-label="WRM Report Builder"></div>
         <img class="hs-welcome-logo" src="${LOGO_DATA_URI}" alt="Workplace Risk Management">
-        <h1 class="hs-welcome-title">Welcome to the Workplace Risk Management (WRM) Report Building App</h1>
+        <h1 class="hs-welcome-title">Welcome to the WRM Report Builder</h1>
+        <p class="hs-strapline">Every check, one report</p>
         <p class="hs-welcome-sub">Tap <strong>Get Started</strong> below, then here's how a visit goes:</p>
         <div class="hs-welcome-steps">
           <div class="hs-welcome-step"><span>1</span><div>Tap <strong>+ Start new visit</strong> and pick the client and site — or type your own if it's not listed yet.</div></div>
@@ -1373,7 +1403,11 @@
     document.getElementById('view-home').innerHTML = `
       <div class="hs-container">
         <div class="hs-home-header">
-          <h1>Site Visit Checklist</h1>
+          <div class="hs-home-header-row">
+            <h1>WRM Report Builder</h1>
+            <div class="hs-app-mark hs-home-mark" role="img" aria-label="WRM Report Builder"></div>
+          </div>
+          <p class="hs-home-strapline">Every check, one report</p>
           <p>Health &amp; Safety and Fire Safety in one visit — switch between them with the tabs on the checklist screen. Take photos against any item — nothing is sent anywhere, it all lives in files you save on this device.</p>
         </div>
         <div class="hs-offline-status pending" id="hs-offline-status">
